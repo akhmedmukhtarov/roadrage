@@ -1,0 +1,24 @@
+// Prisma owns the schema and migrations; queries go through Kysely.
+// `prisma generate` writes Kysely table types to src/database/types.ts.
+
+generator kysely {
+  provider     = "prisma-kysely"
+  output       = "../src/common/services/database"
+  fileName     = "types.ts"
+  enumFileName = "enums.ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username         String   @unique
+  passwordHash     String   @map("password_hash")
+  // argon2 hash of the currently valid refresh token; null when logged out
+  refreshTokenHash String?  @map("refresh_token_hash")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("users")
+}
