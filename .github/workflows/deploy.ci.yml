@@ -109,9 +109,9 @@ jobs:
         id: health
         run: |
           if [ "${{ github.ref_name }}" = "dev" ]; then
-            URL="http://${{ secrets.SERVER_HOST }}:3001/api/v1/health-check"
+            URL="http://${{ secrets.SERVER_HOST }}:3003/api/v1/health-check"
           else
-            URL="http://${{ secrets.SERVER_HOST }}:3000/api/v1/health-check"
+            URL="http://${{ secrets.SERVER_HOST }}:3002/api/v1/health-check"
           fi
 
           MAX_ATTEMPTS=5
