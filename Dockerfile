@@ -1,6 +1,8 @@
 # Debian-based (not alpine) so argon2's prebuilt native binary matches libc
 # in every stage.
 FROM node:22-slim AS base
+# Prisma needs to find OpenSSL to pick its engine
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Install all deps (dev included) — needed for build

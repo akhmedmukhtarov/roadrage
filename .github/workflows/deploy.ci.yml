@@ -118,8 +118,11 @@ jobs:
           ATTEMPT=1
           HEALTH="❌ Health check failed"
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: Checking $URL"
-            if curl -s -f --max-time 5 "$URL" > /dev/null; then
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: Checking port ${URL##*:}"
+            # -S keeps curl's own error (refused, timeout, bad URL) in the log
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$URL") || true
+            echo "HTTP status: ${CODE:-none}"
+            if [ "$CODE" = "200" ]; then
               HEALTH="✅ Application is healthy!"
               break
             fi
