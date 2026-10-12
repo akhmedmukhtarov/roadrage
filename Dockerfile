@@ -27,10 +27,11 @@ ENV NODE_ENV=production
 
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/prisma/schema.prisma ./prisma/schema.prisma
 COPY package.json prisma.config.ts ./
 
 EXPOSE 3000
 
-# Apply pending migrations, then start
+# Sync the database to prisma/schema.prisma, then start. A change that would
+# lose data makes `db push` fail, so the container does not start
 CMD ["sh", "-c", "yarn -s db:deploy && node dist/main.js"]

@@ -18,6 +18,7 @@ services:
       - network
       - postgres
       - redis
+      - minio
 
 networks:
   network:
@@ -31,3 +32,7 @@ networks:
   redis:
     external: true
     name: redis_network
+
+  minio:
+    external: true
+    name: minio_network

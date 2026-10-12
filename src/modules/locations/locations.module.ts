@@ -6,5 +6,6 @@ import { LocationsService } from './locations.service';
 @Module({
   imports: [AuthModule],
   providers: [LocationsGateway, LocationsService],
+  exports: [LocationsGateway],
 })
 export class LocationsModule {}

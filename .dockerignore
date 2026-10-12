@@ -6,4 +6,3 @@ dist
 *.md
 coverage
 .vscode
-docker-compose.yml

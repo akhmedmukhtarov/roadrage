@@ -9,7 +9,7 @@ import * as argon2 from 'argon2';
 import { ErrorCodes } from '@common/constants/error-codes';
 import { IUser, JwtPayload } from '@common/interfaces/user.interface';
 import { Database } from '@common/services/database/database.service';
-import { TokensEntity } from './entities';
+import { ProfileEntity, TokensEntity } from './entities';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -29,7 +29,7 @@ export class AuthService {
       const user = await this.db
         .insertInto('users')
         .values({ username, password_hash: passwordHash })
-        .returning(['id', 'username'])
+        .returning(['id', 'username', 'role'])
         .executeTakeFirstOrThrow();
       return this.issueTokens(user);
     } catch (e) {
@@ -46,7 +46,7 @@ export class AuthService {
   async login(username: string, password: string): Promise<TokensEntity> {
     const user = await this.db
       .selectFrom('users')
-      .select(['id', 'username', 'password_hash'])
+      .select(['id', 'username', 'role', 'password_hash'])
       .where('username', '=', username)
       .executeTakeFirst();
     if (!user || !(await argon2.verify(user.password_hash, password))) {
@@ -74,7 +74,7 @@ export class AuthService {
 
     const user = await this.db
       .selectFrom('users')
-      .select(['id', 'username', 'refresh_token_hash'])
+      .select(['id', 'username', 'role', 'refresh_token_hash'])
       .where('id', '=', payload.sub)
       .executeTakeFirst();
     if (
@@ -97,12 +97,54 @@ export class AuthService {
       .execute();
   }
 
+  /** Fresh from the database: role and coins in the token may be stale. */
+  async getProfile(userId: string): Promise<ProfileEntity> {
+    const row = await this.db
+      .selectFrom('users as u')
+      .leftJoin('skins as s', 's.id', 'u.selected_skin_id')
+      .select([
+        'u.id',
+        'u.username',
+        'u.role',
+        'u.coins',
+        's.id as skin_id',
+        's.name as skin_name',
+        's.image_file_id as skin_image_file_id',
+      ])
+      .where('u.id', '=', userId)
+      .executeTakeFirst();
+    if (!row) {
+      throw new UnauthorizedException({
+        message: 'User no longer exists',
+        code: ErrorCodes.INVALID_TOKEN,
+      });
+    }
+    return {
+      id: row.id,
+      username: row.username,
+      role: row.role,
+      coins: row.coins,
+      selectedSkin:
+        row.skin_id && row.skin_name && row.skin_image_file_id
+          ? {
+              id: row.skin_id,
+              name: row.skin_name,
+              imageFileId: row.skin_image_file_id,
+            }
+          : null,
+    };
+  }
+
   async verifyAccessToken(token: string): Promise<IUser> {
     try {
       const payload = await this.jwt.verifyAsync<JwtPayload>(token, {
         secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
       });
-      return { id: payload.sub, username: payload.username };
+      return {
+        id: payload.sub,
+        username: payload.username,
+        role: payload.role ?? 'USER',
+      };
     } catch {
       throw new UnauthorizedException({
         message: 'Invalid access token',
@@ -112,7 +154,11 @@ export class AuthService {
   }
 
   private async issueTokens(user: IUser): Promise<TokensEntity> {
-    const payload: JwtPayload = { sub: user.id, username: user.username };
+    const payload: JwtPayload = {
+      sub: user.id,
+      username: user.username,
+      role: user.role,
+    };
     const [accessToken, refreshToken] = await Promise.all([
       this.jwt.signAsync(payload, {
         secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),

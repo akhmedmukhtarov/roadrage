@@ -19,6 +19,7 @@ import { LocationsService } from './locations.service';
 
 interface SocketData {
   user: IUser;
+  skinFileId: string | null;
   bboxId?: string;
 }
 
@@ -58,6 +59,7 @@ export class LocationsGateway implements OnGatewayInit, OnGatewayDisconnect {
         .verifyAccessToken(token ?? '')
         .then(async (user) => {
           socket.data.user = user;
+          socket.data.skinFileId = await this.locations.skinFileIdOf(user.id);
           await socket.join(userRoom(user.id));
           next();
         })
@@ -74,11 +76,12 @@ export class LocationsGateway implements OnGatewayInit, OnGatewayDisconnect {
     @ConnectedSocket() client: DeviceSocket,
     @MessageBody() dto: LocationDto,
   ) {
-    const { user, bboxId: previous } = client.data;
+    const { user, skinFileId, bboxId: previous } = client.data;
     const { bboxId, heading, ts } = await this.locations.upsert(
       user,
       dto.lat,
       dto.long,
+      skinFileId,
     );
 
     if (previous !== bboxId) {
@@ -93,6 +96,7 @@ export class LocationsGateway implements OnGatewayInit, OnGatewayDisconnect {
       .emit('location', {
         userId: user.id,
         username: user.username,
+        skinFileId,
         lat: dto.lat,
         long: dto.long,
         heading,
@@ -114,6 +118,14 @@ export class LocationsGateway implements OnGatewayInit, OnGatewayDisconnect {
     );
     if (!devices) throw new WsException('Send a location first');
     return { devices };
+  }
+
+  /** The user picked another skin: their next location update carries it. */
+  async setSkin(userId: string, skinFileId: string | null) {
+    const sockets = await this.server.in(userRoom(userId)).fetchSockets();
+    for (const socket of sockets) {
+      (socket.data as SocketData).skinFileId = skinFileId;
+    }
   }
 
   async handleDisconnect(client: DeviceSocket) {

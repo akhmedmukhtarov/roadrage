@@ -6,7 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 const DESCRIPTION = `
 Backend for the roadrage CarPlay app: rate the drivers around you.
 
-REST covers authentication. Live positions go over **Socket.IO** on the same host.
+REST covers authentication, skins, reaction packs and coins. Live positions go over **Socket.IO** on the same host.
 
 ## Socket.IO
 
@@ -17,11 +17,13 @@ A bad or expired token fails the connection with \`Unauthorized\`.
 | --- | --- | --- | --- |
 | \`location\` | client → server | \`{ lat, long }\` | ack \`{ bboxId }\` |
 | \`nearby\` | client → server | \`{ radius? }\` (metres) | ack \`{ devices: [...] }\` |
-| \`location\` | server → client | | \`{ userId, username, lat, long, heading, bboxId, updatedAt }\` |
+| \`location\` | server → client | | \`{ userId, username, skinFileId, lat, long, heading, bboxId, updatedAt }\` |
 | \`left\` | server → client | | \`{ userId }\` |
 | \`exception\` | server → client | | \`{ status: 'error', message }\` |
 
-A device in \`nearby\`: \`{ userId, username, lat, long, distance, direction, heading, updatedAt }\`.
+A device in \`nearby\`: \`{ userId, username, skinFileId, lat, long, distance, direction, heading, updatedAt }\`.
+\`skinFileId\` is the image of the skin that driver selected, to load from
+\`GET /api/v1/files/open?fileId=\`; \`null\` for the default car.
 
 Angles are clockwise with **0 = left, 90 = north, 180 = right, 270 = south**.
 \`direction\` is where the device is, seen from the requester; \`heading\` is where
@@ -37,6 +39,15 @@ export function setupSwagger(app: INestApplication) {
     .setVersion('1.0.0')
     .addBearerAuth()
     .addTag('Auth', 'Registration, login and token refresh')
+    .addTag('Files', 'Upload a file, open it by id')
+    .addTag('Skins', 'Skin shop, owned skins and the selected one')
+    .addTag('Admin: skins', 'Skin catalog management, ADMIN role only')
+    .addTag('Reaction packs', 'Reaction pack shop and owned packs')
+    .addTag(
+      'Admin: reaction packs',
+      'Reaction packs and their reactions, ADMIN role only',
+    )
+    .addTag('Admin: users', 'Coin grants, ADMIN role only')
     .build();
 
   const document = SwaggerModule.createDocument(app, options, {

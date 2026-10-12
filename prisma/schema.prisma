@@ -1,4 +1,5 @@
-// Prisma owns the schema and migrations; queries go through Kysely.
+// Prisma owns the schema (applied with `prisma db push`, no migration files
+// for now); queries go through Kysely.
 // `prisma generate` writes Kysely table types to src/database/types.ts.
 
 generator kysely {
@@ -12,13 +13,165 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  USER
+  ADMIN
+
+  @@map("role")
+}
+
+enum CoinReason {
+  ADMIN_GRANT
+  SKIN_PURCHASE
+  REACTION_PACK_PURCHASE
+
+  @@map("coin_reason")
+}
+
 model User {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   username         String   @unique
   passwordHash     String   @map("password_hash")
   // argon2 hash of the currently valid refresh token; null when logged out
   refreshTokenHash String?  @map("refresh_token_hash")
+  role             Role     @default(USER)
+  coins            Int      @default(0)
+  // null = the app's default car
+  selectedSkinId   String?  @map("selected_skin_id") @db.Uuid
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  selectedSkin     Skin?              @relation("SelectedSkin", fields: [selectedSkinId], references: [id], onDelete: SetNull)
+  skins            UserSkin[]
+  coinTransactions CoinTransaction[]
+  files            File[]
+  reactionPacks    UserReactionPack[]
+
   @@map("users")
+}
+
+model Skin {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  // uploaded through POST /files/upload
+  imageFileId String   @map("image_file_id") @db.Uuid
+  // in coins; 0 = free, available to everyone without a user_skins row
+  price       Int      @default(0)
+  // hidden skins leave the shop but stay with their owners
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  image            File              @relation(fields: [imageFileId], references: [id])
+  selectedBy       User[]            @relation("SelectedSkin")
+  owners           UserSkin[]
+  coinTransactions CoinTransaction[]
+
+  @@map("skins")
+}
+
+// Metadata of an object in the MinIO bucket; the object is named `{id}{ext}`
+model File {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // MIME type
+  type        String
+  // original filename
+  name        String
+  size        Int
+  bucketName  String   @map("bucket_name")
+  createdById String?  @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  createdBy          User?      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  skins              Skin[]
+  reactionIcons      Reaction[] @relation("ReactionIcon")
+  reactionAnimations Reaction[] @relation("ReactionAnimation")
+
+  @@map("files")
+}
+
+// Purchased skins only
+model UserSkin {
+  userId    String   @map("user_id") @db.Uuid
+  skinId    String   @map("skin_id") @db.Uuid
+  pricePaid Int      @map("price_paid")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skin Skin @relation(fields: [skinId], references: [id])
+
+  @@id([userId, skinId])
+  @@map("user_skins")
+}
+
+// Ledger: every change of users.coins has a row here
+model CoinTransaction {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String     @map("user_id") @db.Uuid
+  // positive = credited, negative = spent
+  amount         Int
+  reason         CoinReason
+  skinId         String?    @map("skin_id") @db.Uuid
+  reactionPackId String?    @map("reaction_pack_id") @db.Uuid
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skin         Skin?         @relation(fields: [skinId], references: [id])
+  reactionPack ReactionPack? @relation(fields: [reactionPackId], references: [id])
+
+  @@index([userId])
+  @@map("coin_transactions")
+}
+
+// A set of reactions sold together, like a skin
+model ReactionPack {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  // in coins; 0 = free, available to everyone without a user_reaction_packs row
+  price     Int      @default(0)
+  // hidden packs leave the shop but stay with their owners
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  reactions        Reaction[]
+  owners           UserReactionPack[]
+  coinTransactions CoinTransaction[]
+
+  @@map("reaction_packs")
+}
+
+// What a driver sends to rate a passing driver
+model Reaction {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  packId          String   @map("pack_id") @db.Uuid
+  name            String
+  // uploaded through POST /files/upload
+  iconFileId      String   @map("icon_file_id") @db.Uuid
+  // a Lottie JSON uploaded the same way; null = the icon is shown still
+  animationFileId String?  @map("animation_file_id") @db.Uuid
+  // -10 (worst) .. 10 (best): what the reaction does to the rated driver
+  rating          Int      @db.SmallInt
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  pack      ReactionPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  icon      File         @relation("ReactionIcon", fields: [iconFileId], references: [id])
+  animation File?        @relation("ReactionAnimation", fields: [animationFileId], references: [id])
+
+  @@index([packId])
+  @@map("reactions")
+}
+
+// Purchased reaction packs only
+model UserReactionPack {
+  userId    String   @map("user_id") @db.Uuid
+  packId    String   @map("pack_id") @db.Uuid
+  pricePaid Int      @map("price_paid")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pack ReactionPack @relation(fields: [packId], references: [id])
+
+  @@id([userId, packId])
+  @@map("user_reaction_packs")
 }

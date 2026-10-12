@@ -11,17 +11,22 @@ interface ApiStandardResponseOptions {
   /** HTTP status the success response is documented under. Defaults to 200. */
   status?: 200 | 201;
   description?: string;
+  /** data is an array of `model` rather than a single `model`. */
+  isArray?: boolean;
 }
 
 /**
  * Documents an endpoint's success response as the global TransformInterceptor actually
- * shapes it: `ApiResponseDto` with `data` narrowed to `model`.
+ * shapes it: `ApiResponseDto` with `data` narrowed to `model` (or an array of it).
  */
 export const ApiStandardResponse = <TModel extends Type<unknown>>(
   model: TModel,
   options: ApiStandardResponseOptions = {},
 ) => {
-  const { status = 200, description } = options;
+  const { status = 200, description, isArray = false } = options;
+  const dataSchema = isArray
+    ? { type: 'array', items: { $ref: getSchemaPath(model) } }
+    : { $ref: getSchemaPath(model) };
   const ApiResponseForStatus =
     status === 201 ? ApiCreatedResponse : ApiOkResponse;
 
@@ -32,7 +37,7 @@ export const ApiStandardResponse = <TModel extends Type<unknown>>(
       schema: {
         allOf: [
           { $ref: getSchemaPath(ApiResponseDto) },
-          { properties: { data: { $ref: getSchemaPath(model) } } },
+          { properties: { data: dataSchema } },
         ],
       },
     }),

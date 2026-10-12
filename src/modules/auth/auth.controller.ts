@@ -10,7 +10,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { CredentialsDto } from './dto/credentials.dto';
 import { RefreshDto } from './dto/refresh.dto';
-import { TokensEntity, UserEntity } from './entities';
+import { ProfileEntity, TokensEntity } from './entities';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -57,9 +57,11 @@ export class AuthController {
 
   @Get('me')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get the authenticated user from the access token' })
-  @ApiStandardResponse(UserEntity)
+  @ApiOperation({
+    summary: 'Get the authenticated user with coins and selected skin',
+  })
+  @ApiStandardResponse(ProfileEntity)
   getMe(@User() user: IUser) {
-    return user;
+    return this.authService.getProfile(user.id);
   }
 }
